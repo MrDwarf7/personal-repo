@@ -1,0 +1,29 @@
+name: Verify packages
+
+on:
+  pull_request:
+    paths:
+      - '*/PKGBUILD'
+      - '*/check.sh'
+      - '*/update.sh'
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    container: cachyos/docker-makepkg-v3
+    strategy:
+      matrix:
+        package:
+          - cal-com
+          - unsloth-bin
+      fail-fast: false
+    steps:
+      - uses: actions/checkout@v7
+      - name: Fix permissions for builder user
+        run: chown -R builder:builder "$GITHUB_WORKSPACE"
+      - name: Test build
+        run: |
+          su builder -c 'cd "${{ matrix.package }}" && makepkg -cfs --noconfirm'

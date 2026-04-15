@@ -1,0 +1,42 @@
+name: Update packages
+
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Run all update scripts
+        run: |
+          failed=""
+          for dir in */; do
+            name="${dir%/}"
+            [ "$name" = "_template" ] && continue
+            [ -f "${dir}update.sh" ] || continue
+            echo "::group::${name}"
+            if bash "${dir}update.sh"; then
+              echo "  ok"
+            else
+              echo "::error::${name} update check failed"
+              failed="${failed} ${name}"
+            fi
+            echo "::endgroup::"
+          done
+          if [ -n "$failed" ]; then
+            echo "::warning::Update checks failed for:${failed}"
+          fi
+      - name: Commit changes
+        run: |
+          git diff --quiet && { echo "No changes"; exit 0; }
+          git config user.name "repo-bot"
+          git config user.email "bot@mrdwarf7.dev"
+          git add -A
+          git commit -m "auto: bump package versions"
+          git push

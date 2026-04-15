@@ -1,0 +1,14 @@
+# Build artifacts -- never track these
+*.AppImage
+*.pkg.tar.zst
+*.pkg.tar.zst.sig
+pkg/
+src/
+squashfs-root/
+
+# Misc noise
+*.swp
+.DS_Store
+
+# Local scratch / archived verification scripts (not part of the repo)
+_archive/

@@ -1,0 +1,55 @@
+# Maintainer: Blake B. <mrdwarf7twitch at gmail dot com>
+
+_pkgname=Cal
+pkgname=cal-com-bin
+pkgver=1.10.1
+pkgrel=1
+pkgdesc="Desktop companion for Cal.com scheduling"
+arch=('x86_64')
+url="https://cal.com"
+license=('custom: commercial')
+provides=('cal-com')
+conflicts=('cal-com')
+options=('!strip')
+install=$pkgname.install
+depends=(gtk3 nss alsa-lib libxkbfile libnotify libxss gcc-libs glibc libsecret shared-mime-info xdg-utils)
+optdepends=('glib2: trash support')
+
+_appimage="${_pkgname}-${pkgver}-x86_64.AppImage"
+source=("${_appimage}::https://download.todesktop.com/220806rvletlw4t/${_appimage}"
+  cal-com.sh)
+sha512sums=('b2c7e8757388f9698ae25d79f06b9709afe363a31b0dcc254ac495504deb32a5fa302a4fb0eb6566c05fd8400487c134d07888d09099b941840267e5f4306486'
+  'SKIP')
+
+prepare() {
+  chmod +x "${srcdir}/${_appimage}"
+  cd "${srcdir}"
+  ./"${_appimage}" --appimage-extract
+}
+
+package() {
+  local optdir="${pkgdir}/opt/cal-com"
+  local sharedir="${pkgdir}/usr/share"
+
+  # Install app to /opt
+  install -d "${optdir}" "${pkgdir}/usr/bin"
+  cp -r squashfs-root/{${_pkgname},resources,locales,*.so*,*.pak,*.dat,*.bin,*.json,chrome_crashpad_handler} "${optdir}/"
+
+  # Fix AppImage permissions (all dirs are 700)
+  chmod -R a-x+rX "${optdir}"
+
+  # Launcher
+  install -Dm755 cal-com.sh "${pkgdir}/usr/bin/cal-com"
+
+  # Desktop file
+  sed -E "s|^Exec=.*|Exec=/usr/bin/cal-com %U|" \
+    squashfs-root/"${_pkgname}.desktop" >"${_pkgname}.desktop"
+  sed -i "s|^Name=.*|Name=Cal.com|" "${_pkgname}.desktop"
+  install -Dm644 "${_pkgname}.desktop" "${sharedir}/applications/${_pkgname}.desktop"
+
+  # Icons (don't cp -a — AppImage dirs are 700, we need 755)
+  cp -r squashfs-root/usr/share/icons "${sharedir}/"
+  install -Dm644 \
+    squashfs-root/usr/share/icons/hicolor/1024x1024/apps/"${_pkgname}.png" \
+    "${sharedir}/pixmaps/${_pkgname}.png"
+}

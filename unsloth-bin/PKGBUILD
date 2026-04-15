@@ -1,0 +1,49 @@
+# Maintainer: Blake B. <mrdwarf7twitch at gmail dot com>
+
+pkgname=unsloth-bin
+pkgver=2026.4.4
+pkgrel=1
+pkgdesc="Fine-tune LLMs 2x faster — Unsloth Studio with web UI"
+arch=('x86_64')
+url="https://unsloth.ai"
+license=('Apache-2.0')
+depends=(python bash curl cmake git gcc)
+optdepends=('cuda: NVIDIA GPU support'
+            'rocm-runtime: AMD GPU support')
+install=$pkgname.install
+
+source=(install.sh::https://unsloth.ai/install.sh
+        unsloth-studio.sh)
+sha256sums=('SKIP'
+            'SKIP')
+
+package() {
+  local bindir="${pkgdir}/usr/bin"
+  local sharedir="${pkgdir}/usr/share"
+  local optdir="${pkgdir}/opt/unsloth"
+
+  # Install upstream installer to /opt for reference / re-run
+  install -dm755 "${optdir}"
+  install -Dm755 install.sh "${optdir}/install.sh"
+
+  # Launcher script — handles first-run setup
+  install -Dm755 unsloth-studio.sh "${bindir}/unsloth-studio"
+
+  # Desktop entry
+  install -dm755 "${sharedir}/applications"
+  cat > "${sharedir}/applications/unsloth-studio.desktop" << 'EOF'
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Unsloth Studio
+Comment=Fine-tune LLMs with a web UI
+Exec=unsloth-studio
+Icon=unsloth-studio
+Terminal=true
+StartupNotify=true
+Categories=Development;Science;
+EOF
+
+  # Icon (downloaded from upstream at install time if missing)
+  install -dm755 "${sharedir}/icons/hicolor/512x512/apps"
+}
