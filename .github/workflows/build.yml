@@ -70,11 +70,11 @@ jobs:
           docker run --rm -v "$PWD":/ws -w /ws \
             cachyos/docker-makepkg-v3 bash -c '
               sudo chown -R notroot:notroot /ws
+              echo "DisableSandbox" | sudo tee -a /etc/pacman.conf >/dev/null
               sudo pacman-key --init >/dev/null 2>&1
-              sudo pacman -Sy --noconfirm --disable-sandbox archlinux-keyring cachyos-keyring >/dev/null 2>&1
+              sudo pacman -Sy --noconfirm archlinux-keyring cachyos-keyring >/dev/null 2>&1
               sudo pacman-key --populate archlinux cachyos >/dev/null 2>&1
-              sudo pacman -Syu --noconfirm --disable-sandbox >/dev/null 2>&1 || true
-              export PACMAN="pacman --disable-sandbox"
+              sudo pacman -Syu --noconfirm >/dev/null 2>&1 || true
               cd "${{ matrix.package }}"
               makepkg -cfs --noconfirm
             '
