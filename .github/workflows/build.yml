@@ -75,14 +75,14 @@ jobs:
               sudo pacman -Sy --noconfirm archlinux-keyring cachyos-keyring >/dev/null 2>&1
               sudo pacman-key --populate archlinux cachyos >/dev/null 2>&1
               sudo pacman -Syu --noconfirm >/dev/null 2>&1 || true
+              export PKGDEST="/ws"
               cd "${{ matrix.package }}"
               makepkg -cfs --noconfirm
             '
       - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.package }}
-          path: ${{ matrix.package }}/*.pkg.tar.zst
-          retention-days: 1
+          path: '*.pkg.tar.zst'
 
   publish:
     needs: [detect, build]
