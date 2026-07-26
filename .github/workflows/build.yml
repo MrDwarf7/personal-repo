@@ -69,7 +69,7 @@ jobs:
         run: |
           docker run --rm -v "$PWD":/ws -w /ws \
             cachyos/docker-makepkg-v3 bash -c '
-              sudo chown -R builder:builder /ws
+              sudo chown -R notroot:notroot /ws
               sudo pacman -Syu --noconfirm >/dev/null 2>&1 || true
               cd "${{ matrix.package }}"
               makepkg -cfs --noconfirm
