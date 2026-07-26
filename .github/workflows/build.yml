@@ -92,6 +92,7 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           path: repo-staging
+          pattern: '*'
           merge-multiple: true
       - name: Build repo database
         run: |
