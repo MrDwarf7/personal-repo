@@ -67,11 +67,12 @@ jobs:
       - uses: actions/checkout@v7
       - name: Build in cachyos container
         run: |
-          sudo docker run --rm -v "$PWD":/ws -w /ws \
+          docker run --rm -v "$PWD":/ws -w /ws \
             cachyos/docker-makepkg-v3 bash -c '
-              pacman -Syu --noconfirm >/dev/null 2>&1 || true
+              sudo chown -R builder:builder /ws
+              sudo pacman -Syu --noconfirm >/dev/null 2>&1 || true
               cd "${{ matrix.package }}"
-              makepkg -cfs --asroot --noconfirm
+              makepkg -cfs --noconfirm
             '
       - uses: actions/upload-artifact@v7
         with:

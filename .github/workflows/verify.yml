@@ -23,8 +23,9 @@ jobs:
       - uses: actions/checkout@v7
       - name: Test build in cachyos container
         run: |
-          sudo docker run --rm -v "$PWD":/ws -w /ws \
+          docker run --rm -v "$PWD":/ws -w /ws \
             cachyos/docker-makepkg-v3 bash -c '
-              pacman -Syu --noconfirm >/dev/null 2>&1 || true
-              cd "${{ matrix.package }}" && makepkg -cfs --asroot --noconfirm
+              sudo chown -R builder:builder /ws
+              sudo pacman -Syu --noconfirm >/dev/null 2>&1 || true
+              cd "${{ matrix.package }}" && makepkg -cfs --noconfirm
             '
