@@ -37,10 +37,21 @@ jobs:
               | sed 's|^\./||' | grep -v '^_template$' | sort -u \
               | jq -R -s -c 'split("\n") | map(select(. != ""))')
           else
-            matrix=$(git diff --name-only HEAD~1 HEAD \
-              | grep '/PKGBUILD$' | sed 's|/PKGBUILD$||' | sed 's|^\./||' \
-              | grep -v '^_template$' | sort -u \
-              | jq -R -s -c 'split("\n") | map(select(. != ""))')
+            if git rev-parse HEAD~1 >/dev/null 2>&1; then
+              changed=$(git diff --name-only HEAD~1 HEAD \
+                | grep '/PKGBUILD$' | sed 's|/PKGBUILD$||' | sed 's|^\./||' \
+                | grep -v '^_template$' | sort -u)
+            else
+              changed=""
+            fi
+            if [ -z "$changed" ]; then
+              matrix=$(find . -maxdepth 2 -name PKGBUILD -exec dirname {} \; \
+                | sed 's|^\./||' | grep -v '^_template$' | sort -u \
+                | jq -R -s -c 'split("\n") | map(select(. != ""))')
+            else
+              matrix=$(printf '%s\n' "$changed" \
+                | jq -R -s -c 'split("\n") | map(select(. != ""))')
+            fi
           fi
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
 
@@ -48,18 +59,20 @@ jobs:
     needs: detect
     if: needs.detect.outputs.matrix != '[]'
     runs-on: ubuntu-latest
-    container: cachyos/docker-makepkg-v3
     strategy:
       matrix:
         package: ${{ fromJson(needs.detect.outputs.matrix) }}
       fail-fast: false
     steps:
       - uses: actions/checkout@v7
-      - name: Fix permissions for builder user
-        run: chown -R builder:builder "$GITHUB_WORKSPACE"
-      - name: Build
+      - name: Build in cachyos container
         run: |
-          su builder -c 'cd "${{ matrix.package }}" && makepkg -cfs --noconfirm'
+          sudo docker run --rm -v "$PWD":/ws -w /ws \
+            cachyos/docker-makepkg-v3 bash -c '
+              pacman -Syu --noconfirm >/dev/null 2>&1 || true
+              cd "${{ matrix.package }}"
+              makepkg -cfs --asroot --noconfirm
+            '
       - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.package }}
@@ -70,29 +83,21 @@ jobs:
     needs: [detect, build]
     if: needs.detect.outputs.matrix != '[]'
     runs-on: ubuntu-latest
-    container: cachyos/docker-makepkg-v3
     steps:
-      - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
         with:
           path: repo-staging
           merge-multiple: true
-      - name: Remove stale release assets
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          pacman -S --noconfirm github-cli || true
-          tag="repository"
-          gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || exit 0
-          gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json assets -q '.assets[].name' \
-            | while read -r asset; do
-                [ -n "$asset" ] && gh release delete-asset "$tag" "$asset" --repo "$GITHUB_REPOSITORY" -y || true
-              done
       - name: Build repo database
         run: |
-          cd repo-staging
-          repo-add "${REPO_NAME}.db.tar.zst" *.pkg.tar.zst
+          sudo docker run --rm -v "$PWD/repo-staging":/data -w /data \
+            -e REPO_NAME="${{ env.REPO_NAME }}" \
+            archlinux:latest bash -c '
+              pacman -Sy --noconfirm >/dev/null 2>&1 || true
+              repo-add "${REPO_NAME}.db.tar.zst" *.pkg.tar.zst
+              cp -L "${REPO_NAME}.db" "${REPO_NAME}.db.tar.zst"
+              cp -L "${REPO_NAME}.files" "${REPO_NAME}.files.tar.zst"
+            '
       - name: Publish to release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -100,4 +105,8 @@ jobs:
           tag="repository"
           gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 \
             || gh release create "$tag" --title "Package Repository" --notes "" --repo "$GITHUB_REPOSITORY"
+          gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json assets -q '.assets[].name' \
+            | while read -r asset; do
+                [ -n "$asset" ] && gh release delete-asset "$tag" "$asset" --repo "$GITHUB_REPOSITORY" -y || true
+              done
           gh release upload "$tag" repo-staging/* --clobber --repo "$GITHUB_REPOSITORY"

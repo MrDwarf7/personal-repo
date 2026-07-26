@@ -13,7 +13,6 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    container: cachyos/docker-makepkg-v3
     strategy:
       matrix:
         package:
@@ -22,8 +21,10 @@ jobs:
       fail-fast: false
     steps:
       - uses: actions/checkout@v7
-      - name: Fix permissions for builder user
-        run: chown -R builder:builder "$GITHUB_WORKSPACE"
-      - name: Test build
+      - name: Test build in cachyos container
         run: |
-          su builder -c 'cd "${{ matrix.package }}" && makepkg -cfs --noconfirm'
+          sudo docker run --rm -v "$PWD":/ws -w /ws \
+            cachyos/docker-makepkg-v3 bash -c '
+              pacman -Syu --noconfirm >/dev/null 2>&1 || true
+              cd "${{ matrix.package }}" && makepkg -cfs --asroot --noconfirm
+            '
