@@ -26,6 +26,9 @@ jobs:
           docker run --rm -v "$PWD":/ws -w /ws \
             cachyos/docker-makepkg-v3 bash -c '
               sudo chown -R notroot:notroot /ws
+              sudo pacman-key --init >/dev/null 2>&1
+              sudo pacman -Sy --noconfirm archlinux-keyring cachyos-keyring >/dev/null 2>&1
+              sudo pacman-key --populate archlinux cachyos >/dev/null 2>&1
               sudo pacman -Syu --noconfirm >/dev/null 2>&1 || true
               cd "${{ matrix.package }}" && makepkg -cfs --noconfirm
             '
