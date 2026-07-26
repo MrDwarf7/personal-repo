@@ -101,8 +101,8 @@ jobs:
             archlinux:latest bash -c '
               pacman -Sy --noconfirm >/dev/null 2>&1 || true
               repo-add "${REPO_NAME}.db.tar.zst" *.pkg.tar.zst
-              cp -L "${REPO_NAME}.db" "${REPO_NAME}.db.tar.zst"
-              cp -L "${REPO_NAME}.files" "${REPO_NAME}.files.tar.zst"
+              cp "${REPO_NAME}.db.tar.zst" "${REPO_NAME}.db"
+              cp "${REPO_NAME}.files.tar.zst" "${REPO_NAME}.files"
             '
       - name: Publish to release
         env:
