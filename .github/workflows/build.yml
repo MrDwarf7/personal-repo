@@ -71,9 +71,10 @@ jobs:
             cachyos/docker-makepkg-v3 bash -c '
               sudo chown -R notroot:notroot /ws
               sudo pacman-key --init >/dev/null 2>&1
-              sudo pacman -Sy --noconfirm archlinux-keyring cachyos-keyring >/dev/null 2>&1
+              sudo pacman -Sy --noconfirm --disable-sandbox archlinux-keyring cachyos-keyring >/dev/null 2>&1
               sudo pacman-key --populate archlinux cachyos >/dev/null 2>&1
-              sudo pacman -Syu --noconfirm >/dev/null 2>&1 || true
+              sudo pacman -Syu --noconfirm --disable-sandbox >/dev/null 2>&1 || true
+              export PACMAN="pacman --disable-sandbox"
               cd "${{ matrix.package }}"
               makepkg -cfs --noconfirm
             '
