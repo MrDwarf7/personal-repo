@@ -91,6 +91,122 @@ def copy_template(pkgname: str, template_dir: str) -> Path:
     return dst
 
 
+# Language-aware PKGBUILD starters. Each is a str.format template with the
+# single field {pkgname}. Add a new language here to extend --lang without
+# touching main().
+PKGBUILD_TEMPLATES: dict[str, str] = {
+    "go": """\
+# Maintainer: Blake B. <mrdwarf7twitch at gmail dot com>
+
+pkgname={pkgname}
+pkgver=0.0.1
+pkgrel=1
+pkgdesc=''
+arch=('x86_64' 'aarch64')
+url=''
+license=('MIT')
+makedepends=('go' 'base-devel')
+depends=(glibc)
+
+source=("$pkgname-$pkgver.tar.gz::https://github.com/OWNER/REPO/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+prepare() {{
+  cd "$pkgname-$pkgver"
+  export GOPATH="$srcdir"
+  go mod download -modcacherw
+}}
+
+build() {{
+  cd "$pkgname-$pkgver"
+  export CGO_CPPFLAGS="${{CPPFLAGS}}"
+  export CGO_CFLAGS="${{CFLAGS}}"
+  export CGO_CXXFLAGS="${{CXXFLAGS}}"
+  export CGO_LDFLAGS="${{LDFLAGS}}"
+  export GOFLAGS="-buildmode=pie -trimpath -ldflags=-linkmode=external -mod=readonly -modcacherw"
+  export GOPATH="$srcdir"
+  go build -o "$pkgname" .
+}}
+
+check() {{
+  cd "$pkgname-$pkgver"
+  export GOPATH="$srcdir"
+  go test ./...
+}}
+
+package() {{
+  cd "$pkgname-$pkgver"
+  install -Dm755 "$pkgname" "$pkgdir/usr/bin/$pkgname"
+}}
+""",
+    "rust": """\
+# Maintainer: Blake B. <mrdwarf7twitch at gmail dot com>
+
+pkgname={pkgname}
+pkgver=0.0.1
+pkgrel=1
+pkgdesc=''
+url=''
+license=()
+makedepends=('cargo')
+depends=(gcc-libs glibc)
+arch=('x86_64' 'aarch64')
+source=("$pkgname-$pkgver.tar.gz::https://github.com/OWNER/REPO/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+prepare() {{
+  export RUSTUP_TOOLCHAIN=stable
+  cargo fetch --locked --target "$CARCH"
+}}
+
+build() {{
+  export RUSTUP_TOOLCHAIN=stable
+  export CARGO_TARGET_DIR=target
+  cargo build --frozen --release --all-features
+}}
+
+check() {{
+  export RUSTUP_TOOLCHAIN=stable
+  cargo test --frozen --all-features
+}}
+
+package() {{
+  install -Dm0755 -t "$pkgdir/usr/bin/" "target/release/$pkgname"
+}}
+""",
+    "bin": """\
+# Maintainer: Blake B. <mrdwarf7twitch at gmail dot com>
+
+pkgname={pkgname}
+pkgver=0.0.1
+pkgrel=1
+pkgdesc=''
+arch=('x86_64')
+url=''
+license=('custom')
+options=('!strip')
+source=("$pkgname-$pkgver.tar.gz::https://example.com/$pkgname-$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+package() {{
+  install -Dm755 "$pkgname" "$pkgdir/usr/bin/$pkgname"
+}}
+""",
+}
+
+
+def scaffold_pkgbuild(pkgname: str, lang: str | None) -> str:
+    """Return the PKGBUILD text to write, based on --lang or _template."""
+    if lang and lang in PKGBUILD_TEMPLATES:
+        return PKGBUILD_TEMPLATES[lang].format(pkgname=pkgname)
+    # Fallback: read the bare proto from _template/PKGBUILD if present.
+    proto = TEMPLATE_DIR / "PKGBUILD"
+    if proto.is_file():
+        return proto.read_text().replace("NAME", pkgname)
+    # Last resort: minimal stub.
+    return f"# Maintainer: Blake B. <mrdwarf7twitch at gmail dot com>\npkgname={pkgname}\npkgver=0.0.1\npkgrel=1\npkgdesc=''\narch=('x86_64')\nsource=()\nsha256sums=()\n"
+
+
 def wire_verify(pkgname: str, text: str) -> str:
     """Insert `- <pkgname>` into the hardcoded verify.yml package matrix."""
     # Match the `package:` list under the verify job's strategy.matrix.
@@ -145,6 +261,10 @@ def main() -> None:
                     help="package type for the README table (e.g. 'Go source build')")
     ap.add_argument("--no-verify", action="store_true",
                     help="do not add the package to the verify.yml matrix")
+    ap.add_argument("--lang", choices=["go", "rust", "bin"], default=None,
+                    help="language/build preset for the PKGBUILD starter "
+                         "(go=source build, rust=cargo, bin=prebuilt). "
+                         "Overrides --template-dir.")
     ap.add_argument("--template-dir", default="_template",
                     help="scaffold source dir (default: _template)")
     ap.add_argument("--apply", action="store_true",
@@ -160,15 +280,38 @@ def main() -> None:
     signal.signal(signal.SIGINT, _handle_signal)
     signal.signal(signal.SIGTERM, _handle_signal)
 
-    # 1. Copy template. Only --apply writes anything; dry-run reports only.
+    # 1. Scaffold. Only --apply writes anything; dry-run reports only.
     dst = REPO_ROOT / args.pkgname
     if args.apply:
         global _CREATED_DIR
-        _CREATED_DIR = dst  # set before copy so a mid-copy SIGINT cleans up
-        copy_template(args.pkgname, args.template_dir)  # refuses if dir exists
-        print(f"  + created {dst.relative_to(REPO_ROOT)}/ (from {args.template_dir}/)")
+        _CREATED_DIR = dst  # set before any write so a mid-write SIGINT cleans up
+        if dst.exists():
+            die(f"target already exists: {dst} (refusing to overwrite)")
+        dst.mkdir()
+        (dst / "PKGBUILD").write_text(scaffold_pkgbuild(args.pkgname, args.lang))
+        # Stub check.sh/update.sh so the package is fully wired from the start.
+        (dst / "check.sh").write_text(
+            "#!/bin/bash\n# Print latest upstream version to stdout.\n# Exit 0 + version = found; exit 1 = could not determine.\n"
+            "set -uo pipefail\n\n# TODO: implement per-upstream version lookup\necho '0.0.1'\n"
+        )
+        (dst / "update.sh").write_text(
+            "#!/bin/bash\n# Bump pkgver when upstream has a newer version.\nset -uo pipefail\n\nDIR=\"$(cd \"$(dirname \"$0\")\" && pwd)\"\n"
+            "PKGBUILD=\"$DIR/PKGBUILD\"\ncurrent=$(grep -m1 '^pkgver=' \"$PKGBUILD\" | cut -d= -f2)\n"
+            "upstream=$(bash \"$DIR/check.sh\") || { echo \"Could not determine upstream version\"; exit 0; }\n"
+            "if [ \"$upstream\" = \"$current\" ]; then echo \"Already up to date ($current)\"; exit 0; fi\n"
+            "echo \"Bumping $current -> $upstream\"\n"
+            "sed -i \"s/^pkgver=.*/pkgver=${upstream}/\" \"$PKGBUILD\"\n"
+            "sed -i \"s/^pkgrel=.*/pkgrel=1/\" \"$PKGBUILD\"\n"
+            "# Recompute checksums unless sources are SKIP.\n"
+            "if grep -qE '^sha[0-9]*sums=' \"$PKGBUILD\" && ! grep -q 'SKIP' \"$PKGBUILD\"; then ( cd \"$DIR\" && updpkgsums ); fi\n"
+        )
+        import os as _os
+        _os.chmod(dst / "check.sh", 0o755)
+        _os.chmod(dst / "update.sh", 0o755)
+        src = "lang=" + (args.lang or "proto")
+        print(f"  + created {dst.relative_to(REPO_ROOT)}/ ({src})")
     else:
-        print(f"  + would create {dst.relative_to(REPO_ROOT)}/ (from {args.template_dir}/)")
+        print(f"  + would create {dst.relative_to(REPO_ROOT)}/ (lang={args.lang or 'proto'})")
 
     # 2. Wire verify.yml matrix
     if not args.no_verify:

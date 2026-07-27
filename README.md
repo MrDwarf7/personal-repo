@@ -24,19 +24,24 @@ GitHub Releases and kept up to date automatically.
 
 Add the repo to `/etc/pacman.conf`:
 
-    [mrdwarf7-repo]
-    SigLevel = Optional TrustAll
-    Server = https://github.com/MrDwarf7/personal-repo/releases/download/repository
+```confini
+[mrdwarf7-repo]
+SigLevel = Optional TrustAll
+Server = https://github.com/MrDwarf7/personal-repo/releases/download/repository
+```
 
 Note: the bare `Server` URL returns 404 in a browser -- that's normal GitHub
 behavior (no directory listing at that path). pacman appends the database
+
 name (`personal-repo.db`) automatically, so the repo resolves correctly on
 `pacman -Syu`. The release tagged `repository` is what serves the packages.
 
 Then sync and install:
 
-    sudo pacman -Syu
-    sudo pacman -S <whatever the pkg is>
+```sh
+sudo pacman -Syu
+sudo pacman -S <whatever the pkg is>
+```
 
 ## Packages
 
@@ -62,9 +67,11 @@ Three GitHub Actions workflows keep the repo self-maintaining:
 
 Copy the scaffold and fill it in:
 
-    cp -r _template my-app
-    # edit my-app/PKGBUILD, my-app/check.sh, my-app/update.sh
-    # see cal-com/ for a complete real example
+```bash
+cp -r _template my-app
+# edit my-app/PKGBUILD, my-app/check.sh, my-app/update.sh
+# see cal-com/ for a complete real example
+```
 
 Push to the default branch -- `update.yml` and `build.yml` pick it up
 automatically. No workflow edits required (the build matrix discovers

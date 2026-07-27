@@ -6,6 +6,10 @@ pkg/
 src/
 squashfs-root/
 
+# makepkg clones (e.g. unsloth-bin/unsloth git checkout) and downloaded tarballs
+unsloth/
+*.tar.gz
+
 # Misc noise
 *.swp
 .DS_Store
