@@ -22,19 +22,20 @@ GitHub Releases and kept up to date automatically.
 
 ## Install
 
-Add the repo to `/etc/pacman.conf`:
+Add the repo to `/etc/pacman.conf`. **The section header name must match the
+database filename** published by the repo (`personal-repo.db`), otherwise
+pacman looks for `<header>.db` and gets a 404:
 
-```confini
-[mrdwarf7-repo]
+```ini
+[personal-repo]
 SigLevel = Optional TrustAll
 Server = https://github.com/MrDwarf7/personal-repo/releases/download/repository
 ```
 
 Note: the bare `Server` URL returns 404 in a browser -- that's normal GitHub
 behavior (no directory listing at that path). pacman appends the database
-
-name (`personal-repo.db`) automatically, so the repo resolves correctly on
-`pacman -Syu`. The release tagged `repository` is what serves the packages.
+name from the section header (`personal-repo` -> `personal-repo.db`)
+automatically, so the repo resolves correctly on `pacman -Syu`.
 
 Then sync and install:
 
