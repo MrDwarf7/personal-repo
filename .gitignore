@@ -9,6 +9,8 @@ squashfs-root/
 # Misc noise
 *.swp
 .DS_Store
+__pycache__/
+*.pyc
 
 # Local scratch / archived verification scripts (not part of the repo)
 _archive/

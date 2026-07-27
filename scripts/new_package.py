@@ -1,0 +1,202 @@
+#!/usr/bin/env python3
+"""Scaffold a new package in the personal-repo and wire it in.
+
+Copies `_template/` to `<pkgname>/`, then wires the new package into the
+two repo-specific bits that are NOT auto-discovered by CI:
+
+  - .github/workflows/verify.yml  : hardcoded PR-verify matrix
+  - README.md                      : package table row
+
+`build.yml` and `update.yml` discover packages automatically (they glob
+`*/PKGBUILD` and `*/update.sh`), so they need no edits.
+
+By default this runs DRY: it prints the edits it would make and changes
+nothing. Pass --apply to actually write. This keeps it safe to re-run.
+
+Usage:
+  python3 scripts/new_package.py <pkgname> \
+      --upstream "melqtx/xeet" \
+      --type "Go source build (cgo + libX11)" \
+      [--no-verify]            # skip adding to verify.yml matrix
+      [--template-dir _template]
+
+After running, fill in <pkgname>/PKGBUILD, check.sh, and update.sh.
+"""
+from __future__ import annotations
+
+import argparse
+import os
+import re
+import shutil
+import signal
+import subprocess
+import sys
+from pathlib import Path
+from typing import NoReturn, Optional
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+TEMPLATE_DIR = REPO_ROOT / "_template"
+VERIFY_YML = REPO_ROOT / ".github" / "workflows" / "verify.yml"
+README = REPO_ROOT / "README.md"
+
+# Process tracking for clean teardown. Agents often launch this script in the
+# background and watch its PID, sending SIGTERM/SIGINT to cancel. Any children
+# we spawn should be appended to _CHILDREN so the handler can kill them and we
+# don't leave orphans behind. _CREATED_DIR is the package dir we are scaffolding
+# (set before the copy so a mid-copy signal can roll it back).
+_CHILDREN: "list[subprocess.Popen[bytes]]" = []
+_CREATED_DIR: Optional[Path] = None
+
+
+def _handle_signal(signum: int, _frame: object) -> NoReturn:
+    name = {signal.SIGINT.value: "SIGINT", signal.SIGTERM.value: "SIGTERM"}.get(
+        signum, str(signum)
+    )
+    print(f"\n[pid {os.getpid()}] received {name}; cleaning up...", file=sys.stderr)
+    # Kill any child processes we spawned.
+    for child in _CHILDREN:
+        try:
+            child.terminate()
+        except Exception:
+            pass
+    for child in _CHILDREN:
+        try:
+            child.wait(timeout=2)
+        except Exception:
+            try:
+                child.kill()
+            except Exception:
+                pass
+    # Remove a partially-created package dir so we don't leave the repo in a
+    # half-wired state.
+    if _CREATED_DIR is not None and _CREATED_DIR.exists():
+        shutil.rmtree(_CREATED_DIR, ignore_errors=True)
+        print(f"  removed partial package dir {_CREATED_DIR}", file=sys.stderr)
+    sys.exit(130)
+
+
+def die(msg: str) -> NoReturn:
+    print(f"error: {msg}", file=sys.stderr)
+    sys.exit(1)
+
+
+def copy_template(pkgname: str, template_dir: str) -> Path:
+    src = REPO_ROOT / template_dir
+    if not src.is_dir():
+        die(f"template dir not found: {src}")
+    dst = REPO_ROOT / pkgname
+    if dst.exists():
+        die(f"target already exists: {dst} (refusing to overwrite)")
+    shutil.copytree(src, dst)
+    return dst
+
+
+def wire_verify(pkgname: str, text: str) -> str:
+    """Insert `- <pkgname>` into the hardcoded verify.yml package matrix."""
+    # Match the `package:` list under the verify job's strategy.matrix.
+    pat = re.compile(r"(        package:\n(?:          - [^\n]*\n)+)")
+    m = pat.search(text)
+    if not m:
+        die("could not locate the `package:` matrix in verify.yml")
+    block = m.group(1)
+    if f"- {pkgname}\n" in block:
+        print(f"  (verify.yml: {pkgname} already present -- skipping)")
+        return text
+    new_block = block + f"          - {pkgname}\n"
+    return text[: m.start(1)] + new_block + text[m.end(1) :]
+
+
+def wire_readme(pkgname: str, upstream: str, ptype: str, text: str) -> str:
+    """Append a row to the README package table."""
+    lines = text.splitlines(keepends=True)
+    # Find the header row `| Package ...` and the last contiguous table row.
+    header_idx = None
+    for i, ln in enumerate(lines):
+        if ln.lstrip().startswith("|") and "Package" in ln and "Upstream" in ln:
+            header_idx = i
+            break
+    if header_idx is None:
+        die("could not locate the package table header in README.md")
+    last_row = None
+    for j in range(header_idx, len(lines)):
+        if lines[j].lstrip().startswith("|"):
+            last_row = j
+        else:
+            # Stop at the first non-table line after the header.
+            break
+    if last_row is None:
+        die("package table has no data rows to append after")
+    existing = "".join(lines[header_idx : last_row + 1])
+    if f"| {pkgname} " in existing:
+        print(f"  (README.md: {pkgname} already present -- skipping)")
+        return text
+    row = f"| {pkgname} | {upstream} | {ptype} |\n"
+    out = lines[: last_row + 1] + [row] + lines[last_row + 1 :]
+    return "".join(out)
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description=__doc__,
+                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("pkgname", help="new package directory / pkgname")
+    ap.add_argument("--upstream", default="",
+                    help="upstream name for the README table (e.g. melqtx/xeet)")
+    ap.add_argument("--type", dest="ptype", default="",
+                    help="package type for the README table (e.g. 'Go source build')")
+    ap.add_argument("--no-verify", action="store_true",
+                    help="do not add the package to the verify.yml matrix")
+    ap.add_argument("--template-dir", default="_template",
+                    help="scaffold source dir (default: _template)")
+    ap.add_argument("--apply", action="store_true",
+                    help="actually write changes (default is dry-run)")
+    args = ap.parse_args()
+
+    if not re.fullmatch(r"[A-Za-z0-9._+-]+", args.pkgname):
+        die("pkgname must be a safe directory name (alphanumerics/._+-)")
+
+    # Catch SIGINT/SIGTERM so an agent that launched us in the background and
+    # later kills our PID gets a clean teardown: no orphaned children, no
+    # half-created package directory left in the repo.
+    signal.signal(signal.SIGINT, _handle_signal)
+    signal.signal(signal.SIGTERM, _handle_signal)
+
+    # 1. Copy template. Only --apply writes anything; dry-run reports only.
+    dst = REPO_ROOT / args.pkgname
+    if args.apply:
+        global _CREATED_DIR
+        _CREATED_DIR = dst  # set before copy so a mid-copy SIGINT cleans up
+        copy_template(args.pkgname, args.template_dir)  # refuses if dir exists
+        print(f"  + created {dst.relative_to(REPO_ROOT)}/ (from {args.template_dir}/)")
+    else:
+        print(f"  + would create {dst.relative_to(REPO_ROOT)}/ (from {args.template_dir}/)")
+
+    # 2. Wire verify.yml matrix
+    if not args.no_verify:
+        vtext = VERIFY_YML.read_text() if VERIFY_YML.exists() else ""
+        vnew = wire_verify(args.pkgname, vtext)
+        if vnew != vtext:
+            print(f"  ~ .github/workflows/verify.yml  (+ - {args.pkgname})")
+            if args.apply:
+                VERIFY_YML.write_text(vnew)
+        else:
+            print(f"  . .github/workflows/verify.yml  (no change)")
+
+    # 3. Wire README table
+    rtext = README.read_text() if README.exists() else ""
+    rnew = wire_readme(args.pkgname, args.upstream, args.ptype, rtext)
+    if rnew != rtext:
+        print(f"  ~ README.md  (+ | {args.pkgname} | {args.upstream} | {args.ptype} |)")
+        if args.apply:
+            README.write_text(rnew)
+    else:
+        print(f"  . README.md  (no change)")
+
+    print()
+    if args.apply:
+        print("Applied. Next: edit the new package's PKGBUILD, check.sh, update.sh.")
+    else:
+        print("Dry-run complete. Re-run with --apply to write changes.")
+
+
+if __name__ == "__main__":
+    main()
