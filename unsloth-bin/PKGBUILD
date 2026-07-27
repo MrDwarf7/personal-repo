@@ -1,37 +1,52 @@
 # Maintainer: Blake B. <mrdwarf7twitch at gmail dot com>
 
+_pkgbase=unsloth
 pkgname=unsloth-bin
-pkgver=2026.7.5
+pkgver=0.1.501.beta
 pkgrel=1
-pkgdesc="Fine-tune LLMs 2x faster — Unsloth Studio with web UI"
+pkgdesc='Web UI for training and running open models locally (Studio launcher)'
 arch=('x86_64')
-url="https://unsloth.ai"
-license=('Apache-2.0')
-depends=(python bash curl cmake git gcc)
+url='https://github.com/unslothai/unsloth'
+license=('Apache-2.0' 'AGPL-3.0-or-later')
+# Runtime deps mirror the upstream wheel's needs; the Studio UI pulls the
+# rest into a per-user venv on first run via install.sh.
+depends=(python python-typer python-pydantic python-yaml python-nest-asyncio bash)
 optdepends=('cuda: NVIDIA GPU support'
             'rocm-runtime: AMD GPU support')
+makedepends=(git npm python-build python-installer)
 install=$pkgname.install
 
-source=(install.sh::https://unsloth.ai/install.sh
-        unsloth-studio.sh)
-sha256sums=('SKIP'
-            'SKIP')
+# Pinned to an upstream release tag. Arch pkgver policy forbids hyphens, so the
+# PKGBUILD pkgver uses a dot (0.1.501.beta) and we map it back to the real tag
+# (v0.1.501-beta) in the source URL. The git source is verified by tag, so a
+# SKIP checksum is acceptable here (the tag is immutable).
+source=("$_pkgbase::git+https://github.com/unslothai/unsloth.git#tag=v${pkgver/.beta/-beta}")
+sha256sums=('SKIP')
+
+build() {
+  # Frontend (Vite/TypeScript)
+  cd "$_pkgbase/studio/frontend"
+  npm install
+  npm run build
+  cd "$srcdir/$_pkgbase"
+
+  python -m build --wheel
+}
 
 package() {
-  local bindir="${pkgdir}/usr/bin"
-  local sharedir="${pkgdir}/usr/share"
-  local optdir="${pkgdir}/opt/unsloth"
+  cd "$_pkgbase"
+  python -m installer --destdir="$pkgdir" dist/*.whl
 
-  # Install upstream installer to /opt for reference / re-run
-  install -dm755 "${optdir}"
-  install -Dm755 install.sh "${optdir}/install.sh"
+  # Ship upstream install.sh so users can run it post-install to create the
+  # per-user studio venv (~/.unsloth/studio/unsloth_studio) with PyTorch etc.
+  install -Dm755 install.sh "$pkgdir/usr/share/$_pkgbase/install.sh"
 
-  # Launcher script — handles first-run setup
-  install -Dm755 unsloth-studio.sh "${bindir}/unsloth-studio"
+  # Launcher + desktop entry + icon dir (unsloth-studio.sh lives in the
+  # package source dir, alongside this PKGBUILD).
+  install -Dm755 "$startdir/unsloth-studio.sh" "$pkgdir/usr/bin/unsloth-studio"
 
-  # Desktop entry
-  install -dm755 "${sharedir}/applications"
-  cat > "${sharedir}/applications/unsloth-studio.desktop" << 'EOF'
+  install -dm755 "$pkgdir/usr/share/applications"
+  cat > "$pkgdir/usr/share/applications/unsloth-studio.desktop" << 'EOF'
 [Desktop Entry]
 Version=1.0
 Type=Application
@@ -44,6 +59,5 @@ StartupNotify=true
 Categories=Development;Science;
 EOF
 
-  # Icon (downloaded from upstream at install time if missing)
-  install -dm755 "${sharedir}/icons/hicolor/512x512/apps"
+  install -dm755 "$pkgdir/usr/share/icons/hicolor/512x512/apps"
 }

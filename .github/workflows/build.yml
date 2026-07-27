@@ -107,10 +107,18 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           tag="repository"
-          gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 \
-            || gh release create "$tag" --title "Package Repository" --notes "" --repo "$GITHUB_REPOSITORY"
-          gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json assets -q '.assets[].name' \
-            | while read -r asset; do
-                [ -n "$asset" ] && gh release delete-asset "$tag" "$asset" --repo "$GITHUB_REPOSITORY" -y || true
-              done
+          # Floating tag: recreate every run so the release's underlying git tag
+          # always points at the current commit. This mirrors the rust_template
+          # nightly/docs pattern (gh release delete --cleanup-tag + API ref
+          # delete, then recreate with target_commitish). Avoids the tag freezing
+          # at first creation and drifting when `main` is force-pushed -- which
+          # reads as tag-based divergence in jj. No git push --force, no
+          # workflows scope needed.
+          gh release delete "$tag" --yes --cleanup-tag --repo "$GITHUB_REPOSITORY" 2>/dev/null || true
+          gh api --method DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/$tag" 2>/dev/null || true
+          gh release create "$tag" \
+            --title "Package Repository" \
+            --notes "" \
+            --target "$GITHUB_SHA" \
+            --repo "$GITHUB_REPOSITORY"
           gh release upload "$tag" repo-staging/* --clobber --repo "$GITHUB_REPOSITORY"
