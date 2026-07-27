@@ -94,6 +94,20 @@ jobs:
           path: repo-staging
           pattern: '*'
           merge-multiple: true
+      - name: Fetch existing repo database (accumulate packages)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Pull the current db into repo-staging so repo-add MERGES the newly
+          # built packages into the existing set instead of starting from
+          # scratch. Without this, every build only contained the packages
+          # built in that single run and the others vanished from the repo.
+          # The release is recreated further down; the db is preserved by
+          # carrying it forward here.
+          gh release download repository \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern "${REPO_NAME}.db.tar.zst" \
+            --dir repo-staging 2>/dev/null || true
       - name: Build repo database
         run: |
           sudo docker run --rm -v "$PWD/repo-staging":/data -w /data \
@@ -107,13 +121,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           tag="repository"
-          # Floating tag: recreate every run so the release's underlying git tag
-          # always points at the current commit. This mirrors the rust_template
-          # nightly/docs pattern (gh release delete --cleanup-tag + API ref
-          # delete, then recreate with target_commitish). Avoids the tag freezing
-          # at first creation and drifting when `main` is force-pushed -- which
-          # reads as tag-based divergence in jj. No git push --force, no
-          # workflows scope needed.
+          # Floating tag: recreate every run so the release's underlying git
+          # tag always points at the current commit (mirrors rust_template
+          # nightly/docs). No git push --force, no workflows scope. The db
+          # above already carries forward all previously-published packages,
+          # so this only rotates the tag -- it does not drop packages.
           gh release delete "$tag" --yes --cleanup-tag --repo "$GITHUB_REPOSITORY" 2>/dev/null || true
           gh api --method DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/$tag" 2>/dev/null || true
           gh release create "$tag" \

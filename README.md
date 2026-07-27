@@ -13,12 +13,12 @@ GitHub Releases and kept up to date automatically.
 
 ## Requirements
 
-| What     | Need                                    |
-| -------- | --------------------------------------- |
-| OS       | Arch Linux (or derivative using pacman) |
-| CPU      | x86-64-v3 or newer (Haswell+, 2013+)    |
-| Access   | GitHub Releases (public, CDN-backed)    |
-| Signing  | None -- `Optional TrustAll`             |
+| What    | Need                                    |
+| ------- | --------------------------------------- |
+| OS      | Arch Linux (or derivative using pacman) |
+| CPU     | x86-64-v3 or newer (Haswell+, 2013+)    |
+| Access  | GitHub Releases (public, CDN-backed)    |
+| Signing | None -- `Optional TrustAll`             |
 
 ## Install
 
@@ -28,17 +28,22 @@ Add the repo to `/etc/pacman.conf`:
     SigLevel = Optional TrustAll
     Server = https://github.com/MrDwarf7/personal-repo/releases/download/repository
 
+Note: the bare `Server` URL returns 404 in a browser -- that's normal GitHub
+behavior (no directory listing at that path). pacman appends the database
+name (`personal-repo.db`) automatically, so the repo resolves correctly on
+`pacman -Syu`. The release tagged `repository` is what serves the packages.
+
 Then sync and install:
 
     sudo pacman -Syu
-    sudo pacman -S cal-com-bin unsloth-bin
+    sudo pacman -S <whatever the pkg is>
 
 ## Packages
 
-| Package     | Upstream | Type                          |
-| ----------- | -------- | ----------------------------- |
-| cal-com-bin | Cal.com  | Electron AppImage (ToDesktop) |
-| unsloth-bin | Unsloth  | Python venv (PyTorch + UI)    |
+| Package     | Upstream    | Type                           |
+| ----------- | ----------- | ------------------------------ |
+| cal-com-bin | Cal.com     | Electron AppImage (ToDesktop)  |
+| unsloth-bin | Unsloth     | Python venv (PyTorch + UI)     |
 | xeet        | melqtx/xeet | Go source build (cgo + libX11) |
 
 ## How it works
