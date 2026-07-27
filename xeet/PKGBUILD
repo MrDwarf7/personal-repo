@@ -1,0 +1,59 @@
+# Maintainer: Blake B. <mrdwarf7twitch at gmail dot com>
+
+pkgname=xeet
+pkgver=0.1.9
+pkgrel=1
+pkgdesc="Post to and read X from the terminal using your browser session (no API keys)"
+arch=('x86_64' 'aarch64')
+url="https://github.com/melqtx/xeet"
+license=('MIT')
+# golang.design/x/clipboard compiles X11 through cgo and dlopens libX11.so at
+# runtime, so we need base-devel (gcc) to build and libx11 present at build
+# time. glibc is pulled in transitively by the toolchain.
+makedepends=('go' 'base-devel' 'libx11')
+# Wayland shells reach for wl-copy/wl-paste instead of X11; the binary still
+# links against libX11 for the X11 clipboard path, so keep it as a runtime dep.
+depends=('glibc' 'libx11' 'wl-clipboard')
+
+# Upstream tags are vX.Y.Z; the GitHub auto-generated tarball extracts to
+# $pkgname-$pkgver (xeet-0.1.9), which is what makepkg expects.
+source=("$pkgname-$pkgver.tar.gz::https://github.com/melqtx/xeet/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('74eaa4bfedf71da59671e6b7b1d8254f10d8067fae5f2f4fc5db006f96c0ae92')
+
+prepare() {
+  cd "$pkgname-$pkgver"
+  export GOPATH="$srcdir"
+  # Cache the module graph into the build dir so build()/check() stay offline.
+  go mod download -modcacherw
+}
+
+build() {
+  cd "$pkgname-$pkgver"
+  # Per the Arch Go packaging guidelines, hardening/PIE flags must be passed
+  # explicitly because go does not read CFLAGS/LDFLAGS for its C toolchain.
+  export CGO_CPPFLAGS="${CPPFLAGS}"
+  export CGO_CFLAGS="${CFLAGS}"
+  export CGO_CXXFLAGS="${CXXFLAGS}"
+  export CGO_LDFLAGS="${LDFLAGS}"
+  export GOFLAGS="-buildmode=pie -trimpath -ldflags=-linkmode=external -mod=readonly -modcacherw"
+  export GOPATH="$srcdir"
+
+  go build -o "$pkgname" .
+}
+
+check() {
+  cd "$pkgname-$pkgver"
+  export GOPATH="$srcdir"
+  # Live tests are gated behind XEET_LIVE_* env vars and are skipped unless
+  # explicitly enabled, so a clean-room `go test ./...` is safe here.
+  go test ./...
+}
+
+package() {
+  cd "$pkgname-$pkgver"
+  install -Dm755 "$pkgname" "$pkgdir/usr/bin/$pkgname"
+
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+  install -Dm644 THIRD_PARTY_NOTICES.md "$pkgdir/usr/share/doc/$pkgname/THIRD_PARTY_NOTICES.md"
+}

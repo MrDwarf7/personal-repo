@@ -39,6 +39,7 @@ Then sync and install:
 | ----------- | -------- | ----------------------------- |
 | cal-com-bin | Cal.com  | Electron AppImage (ToDesktop) |
 | unsloth-bin | Unsloth  | Python venv (PyTorch + UI)    |
+| xeet        | melqtx/xeet | Go source build (cgo + libX11) |
 
 ## How it works
 
