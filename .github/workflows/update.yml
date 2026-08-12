@@ -15,23 +15,35 @@ jobs:
       - uses: actions/checkout@v7
       - name: Run all update scripts
         run: |
-          failed=""
-          for dir in */; do
-            name="${dir%/}"
-            [ "$name" = "_template" ] && continue
-            [ -f "${dir}update.sh" ] || continue
-            echo "::group::${name}"
-            if bash "${dir}update.sh"; then
-              echo "  ok"
-            else
-              echo "::error::${name} update check failed"
-              failed="${failed} ${name}"
-            fi
-            echo "::endgroup::"
-          done
-          if [ -n "$failed" ]; then
-            echo "::warning::Update checks failed for:${failed}"
-          fi
+          # update.sh needs updpkgsums (pacman-contrib) to recompute checksums
+          # after a pkgver bump, and that tool only exists in an Arch
+          # environment. Run the loop inside the same cachyos container the
+          # build job uses so checksums are always recomputed (previously the
+          # loop ran on ubuntu-latest, updpkgsums was missing, and bumps were
+          # committed with stale checksums -> every build failed validation).
+          docker run --rm -v "$PWD":/ws -w /ws \
+            cachyos/docker-makepkg-v3 bash -c '
+              sudo chown -R notroot:notroot /ws
+              command -v updpkgsums >/dev/null 2>&1 \
+                || sudo pacman -Sy --noconfirm pacman-contrib >/dev/null 2>&1
+              failed=""
+              for dir in */; do
+                name="${dir%/}"
+                [ "$name" = "_template" ] && continue
+                [ -f "${dir}update.sh" ] || continue
+                echo "::group::${name}"
+                if bash "${dir}update.sh"; then
+                  echo "  ok"
+                else
+                  echo "::error::${name} update check failed"
+                  failed="${failed} ${name}"
+                fi
+                echo "::endgroup::"
+              done
+              if [ -n "$failed" ]; then
+                echo "::warning::Update checks failed for:${failed}"
+              fi
+            '
       - name: Commit changes
         run: |
           git diff --quiet && { echo "No changes"; exit 0; }

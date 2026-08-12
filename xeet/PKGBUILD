@@ -18,7 +18,7 @@ depends=('glibc' 'libx11' 'wl-clipboard')
 # Upstream tags are vX.Y.Z; the GitHub auto-generated tarball extracts to
 # $pkgname-$pkgver (xeet-0.1.9), which is what makepkg expects.
 source=("$pkgname-$pkgver.tar.gz::https://github.com/melqtx/xeet/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('74eaa4bfedf71da59671e6b7b1d8254f10d8067fae5f2f4fc5db006f96c0ae92')
+sha256sums=('921f856d19cbff87529bb72d7d98a4aa7a4f237531afa9d2a9158cef10111d95')
 
 prepare() {
   cd "$pkgname-$pkgver"
