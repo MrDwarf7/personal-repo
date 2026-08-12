@@ -4,6 +4,11 @@ on:
   push:
     paths:
       - '*/PKGBUILD'
+  workflow_run:
+    workflows:
+      - 'Update packages'
+    types:
+      - completed
   workflow_dispatch:
     inputs:
       package:
@@ -36,6 +41,27 @@ jobs:
             matrix=$(find . -maxdepth 2 -name PKGBUILD -exec dirname {} \; \
               | sed 's|^\./||' | grep -v '^_template$' | sort -u \
               | jq -R -s -c 'split("\n") | map(select(. != ""))')
+          elif [ "${{ github.event_name }}" = "workflow_run" ]; then
+            # Triggered by the Update packages cron after it committed+pushed a
+            # version bump. Update packages checks out head_sha, then commits a
+            # bump ON TOP and pushes, so the new bump commit is the current tip.
+            # Only act when that tip is the auto-bump commit; otherwise a no-op
+            # update run (no changes) would rebuild every package.
+            head="${{ github.event.workflow_run.head_sha }}"
+            msg=$(git show -s --format='%s' HEAD)
+            if [ "$msg" != "auto: bump package versions" ]; then
+              matrix='[]'
+            else
+              changed=$(git diff --name-only "${head}" HEAD \
+                | grep '/PKGBUILD$' | sed 's|/PKGBUILD$||' | sed 's|^\./||' \
+                | grep -v '^_template$' | sort -u)
+              if [ -z "$changed" ]; then
+                matrix='[]'
+              else
+                matrix=$(printf '%s\n' "$changed" \
+                  | jq -R -s -c 'split("\n") | map(select(. != ""))')
+              fi
+            fi
           else
             if git rev-parse HEAD~1 >/dev/null 2>&1; then
               changed=$(git diff --name-only HEAD~1 HEAD \
