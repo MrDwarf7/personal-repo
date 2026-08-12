@@ -120,20 +120,40 @@ jobs:
           path: repo-staging
           pattern: '*'
           merge-multiple: true
-      - name: Fetch existing repo database (accumulate packages)
+      - name: Fetch existing repo database + package files (accumulate)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # Pull the current db into repo-staging so repo-add MERGES the newly
-          # built packages into the existing set instead of starting from
-          # scratch. Without this, every build only contained the packages
-          # built in that single run and the others vanished from the repo.
-          # The release is recreated further down; the db is preserved by
-          # carrying it forward here.
+          # Carry forward the previously published db AND package files so
+          # repo-add MERGES the freshly built packages into the existing set
+          # instead of starting from scratch. Without the package files, a
+          # single-package build only carried its own *.pkg.tar.zst, so the
+          # other packages' files vanished when the release was recreated
+          # (the db kept their entries but the files were gone -> 404 on
+          # install). The release itself is recreated further down; the db
+          # and files are preserved by carrying them forward here.
           gh release download repository \
             --repo "$GITHUB_REPOSITORY" \
             --pattern "${REPO_NAME}.db.tar.zst" \
             --dir repo-staging 2>/dev/null || true
+          # Old package files go to a separate dir so we can drop stale
+          # versions of packages rebuilt in THIS run (their fresh artifacts
+          # are already in repo-staging from the build step).
+          gh release download repository \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern "*.pkg.tar.zst" \
+            --dir old-pkgs 2>/dev/null || true
+          for f in old-pkgs/*.pkg.tar.zst; do
+            [ -e "$f" ] || continue
+            # package name = filename minus arch, pkgrel, pkgver
+            # (none of those contain '-', so strip the last 3 '-' fields)
+            name=$(basename "$f" .pkg.tar.zst \
+              | sed -E 's/-[^-]+$//; s/-[^-]+$//; s/-[^-]+$//')
+            if ls repo-staging/"$name"-*.pkg.tar.zst >/dev/null 2>&1; then
+              rm -f "$f"
+            fi
+          done
+          mv old-pkgs/*.pkg.tar.zst repo-staging/ 2>/dev/null || true
       - name: Build repo database
         run: |
           sudo docker run --rm -v "$PWD/repo-staging":/data -w /data \
