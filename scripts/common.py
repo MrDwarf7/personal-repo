@@ -100,8 +100,9 @@ class StrategyResult:
     detail: str = ""
 
     def __str__(self) -> str:
-        mark = "ok " if self.ok else "FAIL"
-        base = f"  [{mark}] {self.package}"
+        label = "ok " if self.ok else "FAIL"
+        colored = f"\033[32m{label:4}\033[0m" if self.ok else f"\033[31m{label:4}\033[0m"
+        base = f"  [{colored}] {self.package}"
         return base + (f" -- {self.detail}" if self.detail else "")
 
 
