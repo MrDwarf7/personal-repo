@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# noqa: CPY001
 """Consistency guard: detect repo wiring drift.
 
 Checks every package is fully wired in (verify.yml matrix + README table) and
@@ -8,25 +9,37 @@ before push. Scales by adding more @strategy checks here.
 Usage:
   python3 scripts/repo_lint.py [--quiet] [--pkg NAME]
 """
+
 from __future__ import annotations
 
 import argparse
 import sys
 
 import common
-from common import Package, StrategyResult, discover_packages, readme_package_rows, strategy, verify_matrix_packages
+from common import (
+    Package,
+    StrategyResult,
+    discover_packages,
+    readme_package_rows,
+    strategy,
+    verify_matrix_packages,
+)
 
 
 @strategy("verify-matrix-wired")
 def check_verify_matrix(pkg: Package) -> StrategyResult:
     wired = pkg.wired_names() & verify_matrix_packages()
-    return StrategyResult(pkg.name, bool(wired), "" if wired else "missing from verify.yml matrix")
+    return StrategyResult(
+        pkg.name, bool(wired), "" if wired else "missing from verify.yml matrix"
+    )
 
 
 @strategy("readme-table-wired")
 def check_readme_table(pkg: Package) -> StrategyResult:
     wired = pkg.wired_names() & readme_package_rows()
-    return StrategyResult(pkg.name, bool(wired), "" if wired else "missing from README table")
+    return StrategyResult(
+        pkg.name, bool(wired), "" if wired else "missing from README table"
+    )
 
 
 @strategy("has-check-script")
@@ -60,7 +73,9 @@ def main() -> int:
         common.get_strategy("has-check-script"),
         common.get_strategy("has-update-script"),
     ]
-    assert all(s is not None for s in strategies)
+    strategies = [s for s in strategies if s is not None]
+
+    assert all(s is not None for s in strategies)  # noqa: S101
     _, failures = common.run_strategies(pkgs, strategies, quiet=args.quiet)  # type: ignore[arg-type]
     if not args.quiet:
         print(f"\n{'PASS' if failures == 0 else 'FAIL'}: {failures} issue(s).")

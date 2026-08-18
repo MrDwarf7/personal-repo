@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# noqa: CPY001
 """Shared helpers and a tiny strategy/registry engine for repo tooling.
 
 Every repo script follows the same shape: discover packages, run a strategy
@@ -17,12 +18,13 @@ To add a new tool:
   2. In its __main__, call discover_packages() and run_strategies().
 No changes to this file are needed.
 """
+
 from __future__ import annotations
+from typing_extensions import Callable
 
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 TEMPLATE_DIR = REPO_ROOT / "_template"
@@ -32,6 +34,7 @@ EXCLUDED_DIRS = {"_template"}  # never a real package
 @dataclass
 class Package:
     """One package directory in the repo."""
+
     name: str
     path: Path
 
@@ -113,7 +116,9 @@ _REGISTRY: dict[str, StrategyFn] = {}
 def strategy(name: str) -> Callable[[Callable], Callable]:
     """Decorator: register a function as a named strategy."""
 
-    def deco(fn: Callable[[Package], StrategyResult]) -> Callable[[Package], StrategyResult]:
+    def deco(
+        fn: Callable[[Package], StrategyResult],
+    ) -> Callable[[Package], StrategyResult]:
         fn.name = name  # type: ignore[attr-defined]
         _REGISTRY[name] = fn  # type: ignore[assignment]
         return fn

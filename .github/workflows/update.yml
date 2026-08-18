@@ -44,6 +44,9 @@ jobs:
                 echo "::warning::Update checks failed for:${failed}"
               fi
             '
+      - name: Restore repo ownership
+        run: sudo chown -R $(id -u):$(id -g) .
+
       - name: Commit changes
         run: |
           git diff --quiet && { echo "No changes"; exit 0; }
