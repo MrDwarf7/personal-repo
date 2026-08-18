@@ -20,7 +20,7 @@ No changes to this file are needed.
 """
 
 from __future__ import annotations
-from typing_extensions import Callable
+from typing import Callable
 
 import subprocess
 from dataclasses import dataclass

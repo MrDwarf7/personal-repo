@@ -110,7 +110,7 @@ def main() -> int:
     appendable_strategies = [s for s in appendable_strategies if s is not None]
 
     if not args.skip_namcap:
-        strategies.append(*appendable_strategies)
+        strategies.extend(appendable_strategies)
 
     assert all(s is not None for s in strategies)  # noqa: S101
 
