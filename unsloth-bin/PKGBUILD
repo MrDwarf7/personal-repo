@@ -2,7 +2,7 @@
 
 _pkgbase=unsloth
 pkgname=unsloth-bin
-pkgver=0.1.800.beta
+pkgver=0.1.801.beta
 pkgrel=1
 pkgdesc='Web UI for training and running open models locally (Studio launcher)'
 arch=('x86_64')
